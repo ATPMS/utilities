@@ -70,9 +70,12 @@ func main() {
 			log.Printf("Processed %d rows", count)
 		}
 	}
+	if rows.Err() != nil {
+		log.Printf("Error encountered while processing: %v", rows.Err())
+	}
 
 	if writer != nil {
 		writer.Close()
 	}
-	log.Printf("Done proccessing %d rows.", count)
+	log.Printf("Done proccessing %d rows. Last import: %d", count, last_id)
 }
