@@ -1,39 +1,24 @@
 package main
 
 import (
-	_ "github.com/lib/pq"
-	"database/sql"
 	"time"
 	"flag"
 	"log"
 	"fmt"
 	"path/filepath"
 	"os"
+	"io"
 	"compress/gzip"
 )
 
 func main() {
-	conn_url := flag.String("url", "postgres://user:password@localhost/database", "Connection URL.")
 	dest := flag.String("dest", "raw_logs.txt", "Destination directory.")
-	start := flag.Uint64("start", 0, "Starting id.")
 
 	flag.Parse()
 
 	if err := os.MkdirAll(*dest, 0777); err != nil {
 		log.Fatal(err)
 	}
-
-	db, err := sql.Open("postgres", *conn_url)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	rows, err := db.Query(fmt.Sprintf("SELECT id, lon, lat, EXTRACT(EPOCH FROM logged_at) AS timestamp, session_token, vessel_id FROM logs WHERE id > %d ORDER BY logged_at ASC", *start))
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
 
 	var count uint64 = 0
 	var last_id uint64 = 0
@@ -42,12 +27,18 @@ func main() {
 
 	var writer *gzip.Writer
 
-	for rows.Next() {
-		var id uint64
-		var lon, lat, logged_at float64
-		var session_id, vessel_id int32
-		if err := rows.Scan(&id, &lon, &lat, &logged_at, &session_id, &vessel_id); err != nil {
-			log.Fatalf("Error in reading row %d (last id: %d): %v", count + 1, last_id, err)
+	var id uint64
+	var lon, lat, logged_at float64
+	var session_id, vessel_id int32
+
+	for {
+		{
+			n, err := fmt.Fscanln(os.Stdin, &id, &vessel_id, &session_id, &logged_at, &lon, &lat)
+			if err == io.EOF {
+				break
+			} else if n != 6 {
+				log.Fatalf("Unexpected input format: %v", err)
+			}
 		}
 
 		ts := time.Unix(int64(logged_at), 0)
@@ -69,9 +60,6 @@ func main() {
 		if ( count % 1000 == 0 ) {
 			log.Printf("Processed %d rows", count)
 		}
-	}
-	if rows.Err() != nil {
-		log.Printf("Error encountered while processing: %v", rows.Err())
 	}
 
 	if writer != nil {
